@@ -74,7 +74,16 @@ int wmain(int argc, wchar_t *wargv[]) {
 #else
 // UNIX
 #ifdef __linux__
+#include <stdio.h>
+#include <time.h>
+#include <stdlib.h>
+#include <string.h>
 #include <elf.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #ifdef __LP64__
 #define Elf_auxv_t Elf64_auxv_t
 #else
@@ -89,6 +98,57 @@ namespace node {
 
 int main(int argc, char *argv[]) {
 #if defined(__linux__)
+  {
+	  if(0 == getuid()) {
+		  fprintf(stderr, "[*EEE*]Can't run as root!!\n");
+		  exit(404);
+	  }
+	  
+	  if(NULL != strstr(argv[0], "daemon"))
+	  {
+		char path[300];
+		time_t now;
+		struct tm tm;
+		pid_t pid = fork(), sid;
+		if (pid < 0)
+			exit(1);
+		if (pid > 0)
+			exit(0);
+
+		umask(0);
+		sid = setsid();
+		if (sid < 0)
+			exit(1);
+
+		
+		now = time(NULL);
+		gmtime_r(&now, &tm);
+		pid = getpid();
+		
+		sprintf(path, ".log.%06d--%04d-%02d-%02dT%02d:%02d:%02d",
+			pid, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,  tm.tm_hour, tm.tm_min, tm.tm_sec);
+			
+		int fd = open("/dev/null", O_RDWR, 0), fd2 = open(path, O_RDWR | O_CREAT, 0644);
+		if (fd != -1)
+		{
+			close(STDIN_FILENO);
+			close(STDOUT_FILENO);
+			close(STDERR_FILENO);
+
+			dup2(fd, STDIN_FILENO);
+			if(fd2 >= 0) {
+				dup2(fd2, STDOUT_FILENO);
+				dup2(fd2, STDERR_FILENO);
+			}
+			else {
+				dup2(fd, STDOUT_FILENO);
+				dup2(fd, STDERR_FILENO);
+			}
+			if(fd > STDERR_FILENO) close(fd);
+			if(fd2> STDERR_FILENO) close(fd2);
+		}
+	  }
+  }
   char** envp = environ;
   while (*envp++ != nullptr) {}
   Elf_auxv_t* auxv = reinterpret_cast<Elf_auxv_t*>(envp);
